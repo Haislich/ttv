@@ -16,11 +16,11 @@ use std::{
 //const CHAR_MAP: [char; 11] = [' ', '.', ':', '-', '=', '+', '*', '#', '%', '@', '"'];
 const GRAY_U8: [u8; 11] = [32, 46, 58, 45, 61, 43, 42, 35, 37, 64, 34];
 const INDEX: u8 = 24;
-const RATIO: i32 = 5;
+const RATIO: i32 = 3;
 const WIDTH: i32 = 1280 / RATIO;
 const HEIGHT: i32 = 720 / RATIO;
 const SIZE: Size = Size::new(WIDTH, HEIGHT);
-const MS: Duration = Duration::from_millis(1000);
+const MS: Duration = Duration::from_millis(17);
 fn main() {
     let original = format!(
         "{}/assets/Howl's Moving Castle - Trailer.mp4",
