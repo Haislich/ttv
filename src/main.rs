@@ -1,34 +1,72 @@
-extern crate image;
+// extern crate clearscreen;
+// #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
+extern crate clearscreen;
 extern crate opencv;
+use opencv::core::Size;
 use opencv::prelude::*;
-// use std::process::Command;
+use opencv::videoio::{VideoCapture, VideoWriter, CAP_ANY};
 // use std::fs;
+use std::{
+    io::{self, Write},
+    thread::sleep,
+    time::Duration,
+};
 
+// Alternative value : //" .'`^\"\\,:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$".;
+//const CHAR_MAP: [char; 11] = [' ', '.', ':', '-', '=', '+', '*', '#', '%', '@', '"'];
+const GRAY_U8: [u8; 11] = [32, 46, 58, 45, 61, 43, 42, 35, 37, 64, 34];
+const INDEX: u8 = 24;
+const RATIO: i32 = 5;
+const WIDTH: i32 = 1280 / RATIO;
+const HEIGHT: i32 = 720 / RATIO;
+const SIZE: Size = Size::new(WIDTH, HEIGHT);
+const MS: Duration = Duration::from_millis(1000);
 fn main() {
-    let char_map = " .:-=+*#%@"; //" .'`^\"\\,:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$".;
-
-    let path = format!(
+    let original = format!(
         "{}/assets/Howl's Moving Castle - Trailer.mp4",
         std::env::current_dir().unwrap().to_str().unwrap()
     );
-    let ratio = 3;
 
-    let mut vc = match opencv::videoio::VideoCapture::from_file(&path, opencv::videoio::CAP_ANY) {
-        Ok(capture) => capture,
-        Err(_) => {
-            println!("Error opening video file");
-            return;
-        }
+    let gray = format!(
+        "{}/assets/Howl's Moving Castle - Trailer - Grayscale.mp4",
+        std::env::current_dir().unwrap().to_str().unwrap()
+    );
+    convert_resized_gray(&original, &gray);
+    display(&gray);
+}
+
+fn convert_resized_gray(original: &str, gray: &str) {
+    let Ok(mut vc) = VideoCapture::from_file(original, CAP_ANY) else {
+        println!("Error opening video file");
+        return;
     };
-
-    let opened = opencv::videoio::VideoCapture::is_opened(&mut vc).unwrap();
-    if !opened {
-        panic!("Unable to open the file!");
-    }
-    loop {
+    match VideoCapture::is_opened(&vc) {
+        Ok(opened) => assert!(opened, "Unable to open the file"),
+        Err(e) => panic!("Unable to open the file!, {e}"),
+    };
+    let Ok(mut vr) = VideoWriter::new(
+        gray,
+        VideoWriter::fourcc('m', 'p', '4', 'v').unwrap(),
+        60.0,
+        SIZE,
+        false,
+    ) else {
+        println!("Error opening video file");
+        return;
+    };
+    'grayscale_conversion: loop {
         let mut frame = opencv::core::Mat::default();
-        vc.read(&mut frame).unwrap();
-
+        match vc.read(&mut frame) {
+            Ok(grabbed) => {
+                if !grabbed {
+                    break 'grayscale_conversion;
+                }
+            }
+            Err(err) => {
+                println!("Error opening the frame {err}");
+                return;
+            }
+        };
         let mut gray_frame = opencv::core::Mat::default();
         opencv::imgproc::cvt_color(&frame, &mut gray_frame, opencv::imgproc::COLOR_BGR2GRAY, 0)
             .unwrap();
@@ -36,25 +74,66 @@ fn main() {
         opencv::imgproc::resize(
             &gray_frame,
             &mut resized_frame,
-            (
-                frame.size().unwrap().width / ratio,
-                frame.size().unwrap().height / ratio,
-            )
-                .into(),
+            SIZE,
             0.0,
             0.0,
             opencv::imgproc::InterpolationFlags::INTER_LINEAR.into(),
         )
         .unwrap();
-        //let resized_frame = gray_frame.clone();
-        for i in 0..resized_frame.rows() {
-            for j in 0..resized_frame.cols() {
-                let val = resized_frame.at_2d::<u8>(i as i32, j as i32).unwrap() / 30;
-                print!("{}", char_map.chars().nth(val as usize).unwrap());
-            }
-            println!("");
+        vr.write(&resized_frame).unwrap();
+    }
+    vr.release().unwrap();
+    vc.release().unwrap();
+}
+
+fn display(gray: &str) {
+    let stdout = io::stdout();
+    let lock = stdout.lock();
+    let mut w = io::BufWriter::with_capacity((((WIDTH + 1) * HEIGHT) * 10) as usize, lock);
+    let Ok(mut vc) = VideoCapture::from_file(gray, CAP_ANY) else {
+        println!("Error opening video file");
+        return;
+    };
+    match VideoCapture::is_opened(&vc) {
+        Ok(opened) => {
+            assert!(opened, "Unable to open the file");
         }
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        //let _ = Command::new("clear").status().unwrap();
+        Err(e) => panic!("Unable to open the file!, {e}"),
+    };
+    let mut frame_char: [u8; (WIDTH + 1) as usize] = [0; (WIDTH + 1) as usize];
+    'print: loop {
+        let mut frame = opencv::core::Mat::default();
+        match vc.read(&mut frame) {
+            Ok(grabbed) => {
+                if !grabbed {
+                    break 'print;
+                }
+            }
+            Err(err) => {
+                println!("Error opening the frame {err}");
+                return;
+            }
+        };
+
+        let mut gray_frame = opencv::core::Mat::default();
+        opencv::imgproc::cvt_color(&frame, &mut gray_frame, opencv::imgproc::COLOR_BGR2GRAY, 0)
+            .unwrap();
+        for row in 0..HEIGHT {
+            for col in 0..WIDTH {
+                let val = gray_frame.at_2d::<u8>(row, col).unwrap() / INDEX;
+                frame_char[col as usize] = GRAY_U8[val as usize];
+            }
+            frame_char[WIDTH as usize] = 10;
+            w.write_all(&frame_char).expect("Unable to write to STDOUT");
+        }
+        match w.flush() {
+            Ok(()) => {}
+            Err(err) => {
+                panic!("Error, {err}");
+            }
+        }
+
+        sleep(MS);
+        clearscreen::clear().expect("failed to clear screen");
     }
 }
