@@ -1,11 +1,9 @@
 // extern crate clearscreen;
 // #![warn(clippy::all, clippy::pedantic, clippy::nursery, clippy::cargo)]
-extern crate clearscreen;
 extern crate opencv;
 use opencv::core::Size;
 use opencv::prelude::*;
 use opencv::videoio::{VideoCapture, VideoWriter, CAP_ANY};
-// use std::fs;
 use std::{
     io::{self, Write},
     thread::sleep,
@@ -16,7 +14,7 @@ use std::{
 //const CHAR_MAP: [char; 11] = [' ', '.', ':', '-', '=', '+', '*', '#', '%', '@', '"'];
 const GRAY_U8: [u8; 11] = [32, 46, 58, 45, 61, 43, 42, 35, 37, 64, 34];
 const INDEX: u8 = 24;
-const RATIO: i32 = 3;
+const RATIO: i32 = 4;
 const WIDTH: i32 = 1280 / RATIO;
 const HEIGHT: i32 = 720 / RATIO;
 const SIZE: Size = Size::new(WIDTH, HEIGHT);
@@ -121,19 +119,20 @@ fn display(gray: &str) {
         for row in 0..HEIGHT {
             for col in 0..WIDTH {
                 let val = gray_frame.at_2d::<u8>(row, col).unwrap() / INDEX;
-                frame_char[col as usize] = GRAY_U8[val as usize];
+                match usize::try_from(col) {
+                    Ok(col) => frame_char[col] = GRAY_U8[val as usize],
+                    Err(e) => {
+                        eprintln!("Error {e}");
+                        return;
+                    }
+                }
             }
             frame_char[WIDTH as usize] = 10;
             w.write_all(&frame_char).expect("Unable to write to STDOUT");
         }
-        match w.flush() {
-            Ok(()) => {}
-            Err(err) => {
-                panic!("Error, {err}");
-            }
-        }
+        w.write_all(b"\x1b[0;0f")
+            .expect("Unable to write to STDOUT");
 
         sleep(MS);
-        clearscreen::clear().expect("failed to clear screen");
     }
 }
